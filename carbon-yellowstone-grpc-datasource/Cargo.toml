@@ -1,0 +1,16 @@
+[package]
+name = "carbon-yellowstone-grpc-datasource"
+version = "0.11.0"
+edition = "2024"
+
+[dependencies]
+async-trait = { workspace = true }
+carbon-core = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+solana-sdk = { workspace = true }
+solana-system-interface = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+yellowstone-grpc-client = { workspace = true }
+yellowstone-grpc-proto = { workspace = true }

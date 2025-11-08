@@ -1,0 +1,18 @@
+[package]
+name = "carbon-jito-shredstream-grpc-datasource"
+version = "0.11.0"
+edition = "2024"
+
+[dependencies]
+async-trait = { workspace = true }
+bincode = { workspace = true }
+carbon-core = { workspace = true }
+carbon-jito-protos = { workspace = true }
+futures = { workspace = true }
+log = { workspace = true }
+scc = { workspace = true }
+solana-client = { workspace = true }
+solana-entry = { workspace = true }
+solana-transaction-status = { workspace = true }
+tokio = { workspace = true }
+tokio-util = { workspace = true }
