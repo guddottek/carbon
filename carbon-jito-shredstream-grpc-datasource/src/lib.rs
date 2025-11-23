@@ -1,0 +1,151 @@
+use std::{
+    sync::Arc,
+    time::{SystemTime, UNIX_EPOCH},
+};
+
+use async_trait::async_trait;
+use carbon_core::{
+    datasource::{Datasource, DatasourceId, TransactionUpdate, Update, UpdateType},
+    error::CarbonResult,
+};
+use carbon_jito_protos::shredstream::{
+    SubscribeEntriesRequest, shredstream_proxy_client::ShredstreamProxyClient,
+};
+use futures::{TryStreamExt, stream::try_unfold};
+use scc::HashCache;
+use solana_client::rpc_client::SerializableTransaction;
+use solana_entry::entry::Entry;
+use solana_transaction_status::TransactionStatusMeta;
+use tokio::sync::mpsc::Sender;
+use tokio_util::sync::CancellationToken;
+
+#[derive(Debug)]
+pub struct JitoShredstreamGrpcClient(String);
+
+impl JitoShredstreamGrpcClient {
+    pub fn new(endpoint: String) -> Self {
+        JitoShredstreamGrpcClient(endpoint)
+    }
+}
+
+#[async_trait]
+impl Datasource for JitoShredstreamGrpcClient {
+    async fn consume(
+        &self,
+        id: DatasourceId,
+        sender: Sender<(Update, DatasourceId)>,
+        cancellation_token: CancellationToken,
+    ) -> CarbonResult<()> {
+        let endpoint = self.0.clone();
+
+        let mut client = ShredstreamProxyClient::connect(endpoint)
+            .await
+            .map_err(|err| carbon_core::error::Error::FailedToConsumeDatasource(err.to_string()))?;
+
+        tokio::spawn(async move {
+            let result = tokio::select! {
+                _ = cancellation_token.cancelled() => {
+                    log::info!("Cancelling Jito Shreadstream gRPC subscription.");
+                    return;
+                }
+
+                result = client.subscribe_entries(SubscribeEntriesRequest {}) =>
+                    result
+            };
+
+            let stream = match result {
+                Ok(r) => r.into_inner(),
+                Err(e) => {
+                    log::error!("Failed to subscribe: {:?}", e);
+                    return;
+                }
+            };
+
+            let stream = try_unfold(
+                (stream, cancellation_token),
+                |(mut stream, cancellation_token)| async move {
+                    tokio::select! {
+                        _ = cancellation_token.cancelled() => {
+                            log::info!("Cancelling Jito Shreadstream gRPC subscription.");
+                            Ok(None)
+                        },
+                        v = stream.message() => match v {
+                            Ok(Some(v)) => Ok(Some((v, (stream, cancellation_token)))),
+                            Ok(None) => Ok(None),
+                            Err(e) => Err(e),
+                        },
+                    }
+                },
+            );
+
+            let dedup_cache = Arc::new(HashCache::with_capacity(1024, 4096));
+
+            if let Err(e) = stream
+                .try_for_each_concurrent(None, |message| {
+                    let sender = sender.clone();
+                    let dedup_cache = dedup_cache.clone();
+                    let id_for_closure = id.clone();
+
+                    async move {
+                        let start_time = SystemTime::now();
+                        let block_time =
+                            Some(start_time.duration_since(UNIX_EPOCH).expect("Time").as_millis() as i64);
+
+                        let entries: Vec<Entry> = match bincode::deserialize(&message.entries) {
+                            Ok(e) => e,
+                            Err(e) => {
+                                log::error!("Failed to deserialize entries: {:?}", e);
+                                return Ok(());
+                            }
+                        };
+
+                        for entry in entries {
+                            if dedup_cache.contains_async(&entry.hash).await {
+                                continue;
+                            }
+                            let _ = dedup_cache.put_async(entry.hash, ()).await;
+
+                            for transaction in entry.transactions {
+                                if transaction.signatures.is_empty() {
+                                    log::error!("transaction.signatures.is_empty: {:?}", transaction);
+                                    return Ok(());
+                                }
+
+                                let signature = *transaction.get_signature();
+
+                                let update = Update::Transaction(Box::new(TransactionUpdate {
+                                    signature,
+                                    is_vote: false,
+                                    transaction,
+                                    meta: TransactionStatusMeta {
+                                        status: Ok(()),
+                                        ..Default::default()
+                                    },
+                                    slot: message.slot,
+                                    block_time,
+                                    block_hash: None,
+                                }));
+
+                                if let Err(e) = sender.try_send((update, id_for_closure.clone())) {
+                                    log::error!("Failed to send transaction update with signature {:?} at slot {}: {:?}", signature, message.slot, e);
+                                    return Ok(());
+                                }
+                            }
+                        }
+
+                        Ok(())
+                    }
+                })
+                .await
+            {
+                log::error!("Grpc stream error: {e:?}");
+            }
+        });
+
+        Ok(())
+    }
+
+    fn update_types(&self) -> Vec<UpdateType> {
+        vec![UpdateType::Transaction]
+    }
+}
