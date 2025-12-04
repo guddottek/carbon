@@ -13,6 +13,8 @@ log = { workspace = true }
 scc = { workspace = true }
 solana-client = { workspace = true }
 solana-entry = { workspace = true }
+solana-sdk = { workspace = true }
+solana-sdk-ids = { workspace = true }
 solana-transaction-status = { workspace = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }

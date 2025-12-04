@@ -414,7 +414,6 @@ async fn send_subscribe_update_transaction_info(
                 slot,
                 e
             );
-            return;
         }
     } else {
         log::error!(
