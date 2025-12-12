@@ -1,0 +1,24 @@
+[package]
+name = "carbon-core"
+version = "0.12.0"
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+bs58.workspace = true
+log.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+solana-account.workspace = true
+solana-address.workspace = true
+solana-hash.workspace = true
+solana-instruction.workspace = true
+solana-message.workspace = true
+solana-signature.workspace = true
+solana-transaction.workspace = true
+solana-transaction-context.workspace = true
+solana-transaction-status-client-types.workspace = true
+thiserror.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
+uuid.workspace = true

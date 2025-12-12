@@ -1,0 +1,16 @@
+[package]
+name = "carbon-rpc-block-subscribe-datasource"
+version = "0.12.0"
+edition = "2024"
+
+[dependencies]
+async-trait.workspace = true
+carbon-core.workspace = true
+futures.workspace = true
+log.workspace = true
+solana-hash.workspace = true
+solana-pubsub-client.workspace = true
+solana-rpc-client.workspace = true
+solana-rpc-client-types.workspace = true
+tokio.workspace = true
+tokio-util.workspace = true
